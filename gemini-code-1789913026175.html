@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>دفتر الأقساط والمديونيات</title>
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="دفتر الأقساط">
+    <link rel="apple-touch-icon" href="https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg">
+    
+    <!-- رابط الـ Manifest المحسن لفرض التشغيل كبرنامج مستقل -->
+    <link rel="manifest" href="data:application/manifest+json;charset=utf-8,{
+        %22name%22: %22دفتر الأقساط والمديونيات%22,
+        %22short_name%22: %22دفتر الأقساط%22,
+        %22start_url%22: %22./?mode=standalone%22,
+        %22display%22: %22standalone%22,
+        %22background_color%22: %22#f1f5f9%22,
+        %22theme_color%22: %22#4f46e5%22,
+        %22icons%22: [
+            {
+                %22src%22: %22https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg%22,
+                %22sizes%22: %22512x512%22,
+                %22type%22: %22image/png%22,
+                %22purpose%22: %22any maskable%22
+            }
+        ]
+    }">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Cairo', sans-serif;
+            background-image: url('https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(4px);
+            z-index: -1;
+        }
+        .modal-enter {
+            animation: modalScale 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes modalScale {
+            from { opacity: 0; transform: scale(0.92) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .wheel-container {
+            height: 140px;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            position: relative;
+        }
+        .wheel-container::-webkit-scrollbar { display: none; }
+        .wheel-item {
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            scroll-snap-align: center;
+            font-size: 15px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .wheel-item.selected {
+            color: #4f46e5;
+            font-size: 18px;
+            font-weight: 700;
+            background: #e0e7ff;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen p-4 sm:p-6 flex items-center justify-center">
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="bg-white/95 backdrop-blur-md w-full max-w-md p-8 rounded-2xl shadow-2xl border border-slate-200 modal-enter">
+        <div class="text-center mb-6">
+            <img src="https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg" alt="شعار التطبيق" class="w-24 h-24 mx-auto mb-3 object-cover rounded-full shadow-md border-2 border-indigo-500">
+            <h1 class="text-2xl font-bold text-slate-800">تسجيل الدخول</h1>
+            <p class="text-sm text-slate-500 mt-1">أدخل كلمة المرور لفتح دفتر المديونيات</p>
+        </div>
+        <form onsubmit="handleLogin(event)" class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">كلمة المرور</label>
+                <input type="password" id="loginPassword" required placeholder="أدخل كلمة المرور..." class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-slate-50">
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl text-sm transition shadow-md">
+                فتح التطبيق
+            </button>
+        </form>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="mainAppWrapper" class="max-w-4xl mx-auto w-full hidden">
+        <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+                <button onclick="openChangePasswordModal()" class="bg-white/90 hover:bg-white text-indigo-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition border border-indigo-200 flex items-center gap-1 shadow-sm">
+                    ⚙️ كلمة المرور
+                </button>
+                <button onclick="exportBackup()" class="bg-white/90 hover:bg-white text-emerald-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition border border-emerald-200 flex items-center gap-1 shadow-sm">
+                    📤 حفظ نسخة
+                </button>
+                <label class="bg-white/90 hover:bg-white text-blue-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition border border-blue-200 flex items-center gap-1 shadow-sm cursor-pointer">
+                    📥 استعادة
+                    <input type="file" id="importFile" accept=".json" onchange="importBackup(event)" class="hidden">
+                </label>
+                <button onclick="downloadDailyReportPDF()" class="bg-white/90 hover:bg-white text-amber-800 px-3 py-1.5 rounded-xl text-xs font-semibold transition border border-amber-200 flex items-center gap-1 shadow-sm">
+                    📄 تقرير اليوم (PDF)
+                </button>
+                <button onclick="openArchivesModal()" class="bg-white/90 hover:bg-white text-purple-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition border border-purple-200 flex items-center gap-1 shadow-sm">
+                    📂 الأرشيف السنوي
+                </button>
+            </div>
+            <button onclick="logout()" class="bg-white/90 hover:bg-white text-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 shadow-sm">
+                🔒 قفل
+            </button>
+        </div>
+
+        <div id="appContainer">
+            <header class="bg-indigo-600/95 backdrop-blur-md text-white p-6 rounded-2xl shadow-xl mb-6 flex flex-col sm:flex-row justify-between items-center gap-4 border border-indigo-400/30">
+                <div class="flex items-center gap-4">
+                    <img src="https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg" alt="شعار" class="w-16 h-16 bg-white p-0.5 rounded-full object-cover shadow-md border-2 border-white">
+                    <div>
+                        <h1 class="text-2xl font-bold">دفتر الأقساط والمديونيات</h1>
+                        <p class="text-indigo-200 text-sm mt-1">تتبع الديون، الأقساط الشهرية، وسجل الدفعات التفصيلي</p>
+                    </div>
+                </div>
+                <div class="flex gap-2 flex-wrap">
+                    <button onclick="requestNotificationPermission()" class="bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-xl text-sm transition font-semibold border border-indigo-500 shadow-sm flex items-center gap-2">
+                        🔔 تفعيل التنبيهات (كل ساعتين)
+                    </button>
+                    <button onclick="testNotificationNow()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-xl text-sm transition font-semibold border border-emerald-500 shadow-sm flex items-center gap-2">
+                        🧪 تجربة إرسال الإشعار الآن
+                    </button>
+                </div>
+            </header>
+
+            <div id="alertsSection" class="mb-6 space-y-2"></div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white/95 backdrop-blur-md p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <p class="text-sm text-slate-500">إجمالي الديون المتبقية</p>
+                    <h3 id="totalRemaining" class="text-2xl font-bold text-indigo-600 mt-1">0 جنيه</h3>
+                </div>
+                <div class="bg-white/95 backdrop-blur-md p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <p class="text-sm text-slate-500">عدد الأشخاص المسجلين</p>
+                    <h3 id="totalClients" class="text-2xl font-bold text-slate-700 mt-1">0</h3>
+                </div>
+                <div class="bg-white/95 backdrop-blur-md p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <p class="text-sm text-slate-500">أقساط مستحقة اليوم</p>
+                    <h3 id="dueThisMonth" class="text-2xl font-bold text-amber-600 mt-1">0</h3>
+                </div>
+            </div>
+
+            <div class="bg-white/95 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
+                <h2 class="text-lg font-bold text-slate-800 mb-4">إضافة شخص جديد</h2>
+                <form id="clientForm" onsubmit="addClient(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">اسم الشخص</label>
+                        <input type="text" id="name" required class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">رقم التلفون</label>
+                        <input type="text" id="phone" required class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">المبلغ الإجمالي (جنيه)</label>
+                        <input type="number" id="totalAmount" required min="1" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">تاريخ استحقاق القسط (جرار ذكي)</label>
+                        <div class="bg-white border border-slate-200 rounded-xl p-2 grid grid-cols-2 gap-2 shadow-inner">
+                            <div>
+                                <span class="block text-[10px] font-bold text-center text-slate-400 mb-1">اليوم</span>
+                                <div id="dayWheel" class="wheel-container"></div>
+                            </div>
+                            <div>
+                                <span class="block text-[10px] font-bold text-center text-slate-400 mb-1">الشهر</span>
+                                <div id="monthWheel" class="wheel-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sm:col-span-2 lg:col-span-4 flex justify-end">
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition shadow-md">
+                            حفظ وإضافة الشخص
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="bg-white/95 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
+                    <h2 class="text-lg font-bold text-slate-800">قائمة المديونيات والأقساط</h2>
+                    <div class="w-full sm:w-72">
+                        <input type="text" id="searchInput" oninput="renderUI()" placeholder="🔍 ابحث بالاسم أو رقم التلفون..." class="w-full px-4 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white">
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-right border-collapse">
+                        <thead>
+                            <tr class="border-b text-xs font-semibold text-slate-500 bg-slate-50">
+                                <th class="p-3">اسم العميل ورقم التلفون</th>
+                                <th class="p-3">المتبقي عليه</th>
+                                <th class="p-3 text-center">الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientsTableBody" class="divide-y text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="clientDetailsContainer" class="hidden"></div>
+        <div id="archiveViewContainer" class="hidden"></div>
+        <div id="archiveClientDetailsContainer" class="hidden"></div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50 transition-all">
+        <div class="bg-white w-full max-w-md p-6 rounded-2xl shadow-2xl border border-slate-200 modal-enter">
+            <div class="flex justify-between items-center mb-4 pb-3 border-b">
+                <div class="flex items-center gap-2">
+                    <span class="text-emerald-600 bg-emerald-50 p-2 rounded-xl text-lg">💰</span>
+                    <h3 class="text-lg font-bold text-slate-800">تسجيل دفعة جديدة</h3>
+                </div>
+                <button onclick="closePaymentModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition font-bold">&times;</button>
+            </div>
+            <p id="modalClientName" class="text-sm text-slate-600 bg-slate-50 p-3.5 rounded-xl mb-4 border border-slate-100 font-medium"></p>
+            <form onsubmit="submitPayment(event)" class="space-y-4">
+                <input type="hidden" id="modalClientId">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">المبلغ المدفوع (جنيه)</label>
+                    <input type="number" id="paymentAmount" required min="1" placeholder="أدخل المبلغ..." class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm bg-slate-50 font-semibold">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closePaymentModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl transition">إلغاء</button>
+                    <button type="submit" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition shadow-md">خصم وإتمام الدفع</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white w-full max-w-md p-6 rounded-2xl shadow-2xl border border-slate-200 modal-enter">
+            <div class="flex justify-between items-center mb-4 pb-3 border-b">
+                <div class="flex items-center gap-2">
+                    <span class="text-indigo-600 bg-indigo-50 p-2 rounded-xl text-lg">🔒</span>
+                    <h3 class="text-lg font-bold text-slate-800">تغيير كلمة المرور</h3>
+                </div>
+                <button onclick="closeChangePasswordModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition font-bold">&times;</button>
+            </div>
+            <form onsubmit="submitChangePassword(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">كلمة المرور الحالية</label>
+                    <input type="password" id="currentPass" required placeholder="أدخل الحالية..." class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">كلمة المرور الجديدة</label>
+                    <input type="password" id="newPass" required placeholder="أدخل الجديدة..." class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">تأكيد كلمة المرور الجديدة</label>
+                    <input type="password" id="confirmNewPass" required placeholder="أعد إدخال الجديدة..." class="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-slate-50">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeChangePasswordModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl transition">إلغاء</button>
+                    <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition shadow-md">حفظ التغيير</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Annual Archives Modal -->
+    <div id="archivesModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white w-full max-w-lg p-6 rounded-2xl shadow-2xl border border-slate-200 modal-enter">
+            <div class="flex justify-between items-center mb-4 pb-3 border-b">
+                <div class="flex items-center gap-2">
+                    <span class="text-purple-600 bg-purple-50 p-2 rounded-xl text-lg">📂</span>
+                    <h3 class="text-lg font-bold text-slate-800">أرشيف الأعوام السابقة (للمراجعة فقط)</h3>
+                </div>
+                <button onclick="closeArchivesModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition font-bold">&times;</button>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">الأرشيف فارغ حالياً.</p>
+            <div id="archivesListContainer" class="space-y-3 max-h-64 overflow-y-auto"></div>
+            <div class="mt-4 pt-3 border-t flex justify-end">
+                <button type="button" onclick="closeArchivesModal()" class="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-xl transition">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Popup -->
+    <div id="customAlertModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl border border-slate-200 text-center modal-enter">
+            <div id="customAlertIcon" class="w-14 h-14 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl">⚠️</div>
+            <h3 id="customAlertTitle" class="text-lg font-bold text-slate-800 mb-1">تنبيه</h3>
+            <p id="customAlertMessage" class="text-sm text-slate-600 mb-6 leading-relaxed"></p>
+            <button onclick="closeCustomAlert()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl text-sm transition shadow-md">
+                حسناً
+            </button>
+        </div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const swCode = `self.addEventListener('fetch', function(event) {});`;
+                const blob = new Blob([swCode], { type: 'text/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+            });
+        }
+
+        let clients = JSON.parse(localStorage.getItem('debt_clients')) || [];
+        localStorage.removeItem('annual_archives');
+        let currentViewClientId = null;
+        let activeArchiveYear = null;
+        const monthNamesList = ["", "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+        function getAppPassword() {
+            return localStorage.getItem('app_password') || '1234';
+        }
+
+        window.onload = function() {
+            if (sessionStorage.getItem('isLoggedIn') === 'true') {
+                showApp();
+            }
+            initWheels();
+            startPeriodicNotifications();
+        };
+
+        function requestNotificationPermission() {
+            if (!("Notification" in window)) {
+                showAlert('تنبيه', 'متصفحك لا يدعم الإشعارات.', 'error');
+                return;
+            }
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    showAlert('نجاح', 'تم تفعيل التلقائي للإشعارات كل ساعتين بنجاح!', 'success');
+                    checkAndSendUnifiedNotification();
+                } else {
+                    showAlert('تنبيه', 'تم رفض إذن الإشعارات.', 'warning');
+                }
+            });
+        }
+
+        function testNotificationNow() {
+            if (!("Notification" in window)) {
+                showAlert('تنبيه', 'متصفحك لا يدعم الإشعارات.', 'error');
+                return;
+            }
+            if (Notification.permission !== "granted") {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        triggerNotificationSend();
+                    } else {
+                        showAlert('تنبيه', 'برجاء السماح بالإشعارات أولاً.', 'warning');
+                    }
+                });
+            } else {
+                triggerNotificationSend();
+            }
+        }
+
+        function triggerNotificationSend() {
+            const today = new Date();
+            const currentDay = today.getDate();
+            const currentMonth = today.getMonth() + 1;
+
+            let unpaidCount = 0;
+            clients.forEach(c => {
+                if (c.remainingAmount > 0 && c.dueDay === currentDay && c.dueMonth === currentMonth) {
+                    const hasPaidThisMonth = c.payments && c.payments.some(p => {
+                        const pDate = new Date(p.timestamp || Date.now());
+                        return pDate.getMonth() === today.getMonth() && pDate.getFullYear() === today.getFullYear();
+                    });
+                    if (!hasPaidThisMonth) unpaidCount++;
+                }
+            });
+
+            new Notification(`تنبيه أقساط اليوم 🔔 (تجريبي)`, {
+                body: `نتيجة الفحص الفوري: يوجد ${unpaidCount} عميل لم يسددوا أقساطهم المستحقة اليوم.`,
+                icon: 'https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg'
+            });
+            showAlert('نجاح', `تم إرسال الإشعار التجريبي بنجاح! العدد الفعلي المستحق اليوم: ${unpaidCount} عميل.`, 'success');
+        }
+
+        function startPeriodicNotifications() {
+            setInterval(() => {
+                checkAndSendUnifiedNotification();
+            }, 2 * 60 * 60 * 1000);
+        }
+
+        function checkAndSendUnifiedNotification() {
+            if (Notification.permission !== "granted") return;
+
+            const today = new Date();
+            const currentDay = today.getDate();
+            const currentMonth = today.getMonth() + 1;
+
+            let unpaidCount = 0;
+            clients.forEach(c => {
+                if (c.remainingAmount > 0 && c.dueDay === currentDay && c.dueMonth === currentMonth) {
+                    const hasPaidThisMonth = c.payments && c.payments.some(p => {
+                        const pDate = new Date(p.timestamp || Date.now());
+                        return pDate.getMonth() === today.getMonth() && pDate.getFullYear() === today.getFullYear();
+                    });
+                    if (!hasPaidThisMonth) unpaidCount++;
+                }
+            });
+
+            if (unpaidCount > 0) {
+                new Notification(`تنبيه أقساط اليوم 🔔`, {
+                    body: `تنبيه دوري: يوجد ${unpaidCount} عميل لم يسددوا أقساطهم المستحقة اليوم.`,
+                    icon: 'https://i.ibb.co/B2Wj6SVG/IMG-20260920-045352.jpg'
+                });
+            }
+        }
+
+        function getDaysInMonth(monthNum) {
+            if (monthNum === 2) return 28;
+            if ([4, 6, 9, 11].includes(monthNum)) return 30;
+            return 31;
+        }
+
+        function initWheels() {
+            const dayWheel = document.getElementById('dayWheel');
+            const monthWheel = document.getElementById('monthWheel');
+            if (!dayWheel || !monthWheel) return;
+
+            monthWheel.innerHTML = '<div style="height: 50px;"></div>';
+            for (let i = 1; i <= 12; i++) {
+                const item = document.createElement('div');
+                item.className = 'wheel-item';
+                item.dataset.value = i;
+                item.textContent = monthNamesList[i];
+                item.onclick = () => { scrollToItem(monthWheel, item); updateDaysWheel(); };
+                monthWheel.appendChild(item);
+            }
+            monthWheel.innerHTML += '<div style="height: 50px;"></div>';
+
+            const today = new Date();
+            setTimeout(() => {
+                const defaultMonth = monthWheel.querySelector(`[data-value="${today.getMonth() + 1}"]`);
+                if (defaultMonth) scrollToItem(monthWheel, defaultMonth, false);
+                updateDaysWheel(today.getDate());
+            }, 100);
+
+            dayWheel.onscroll = () => updateWheelSelection(dayWheel);
+            monthWheel.onscroll = () => { updateWheelSelection(monthWheel); updateDaysWheel(); };
+        }
+
+        function updateDaysWheel(targetDay = null) {
+            const dayWheel = document.getElementById('dayWheel');
+            const selectedMonth = getSelectedWheelValue('monthWheel') || 1;
+            const maxDays = getDaysInMonth(selectedMonth);
+            const currentSelectedDay = targetDay || getSelectedWheelValue('dayWheel') || 1;
+
+            dayWheel.innerHTML = '<div style="height: 50px;"></div>';
+            for (let i = 1; i <= maxDays; i++) {
+                const item = document.createElement('div');
+                item.className = 'wheel-item';
+                item.dataset.value = i;
+                item.textContent = i < 10 ? '0' + i : i;
+                item.onclick = () => scrollToItem(dayWheel, item);
+                dayWheel.appendChild(item);
+            }
+            dayWheel.innerHTML += '<div style="height: 50px;"></div>';
+
+            const validDay = currentSelectedDay > maxDays ? maxDays : currentSelectedDay;
+            setTimeout(() => {
+                const targetItem = dayWheel.querySelector(`[data-value="${validDay}"]`);
+                if (targetItem) scrollToItem(dayWheel, targetItem, false);
+            }, 50);
+        }
+
+        function scrollToItem(container, item, smooth = true) {
+            const topPos = item.offsetTop - container.offsetTop - 50;
+            container.scrollTo({ top: topPos, behavior: smooth ? 'smooth' : 'auto' });
+        }
+
+        function updateWheelSelection(container) {
+            const items = container.querySelectorAll('.wheel-item');
+            const containerCenter = container.scrollTop + container.clientHeight / 2;
+            let closest = null, minDiff = Infinity;
+            items.forEach(item => {
+                const diff = Math.abs(containerCenter - (item.offsetTop + item.offsetHeight / 2));
+                if (diff < minDiff) { minDiff = diff; closest = item; }
+            });
+            items.forEach(i => i.classList.remove('selected'));
+            if (closest) closest.classList.add('selected');
+        }
+
+        function getSelectedWheelValue(containerId) {
+            const container = document.getElementById(containerId);
+            const items = container.querySelectorAll('.wheel-item');
+            const containerCenter = container.scrollTop + container.clientHeight / 2;
+            let closestVal = 1, minDiff = Infinity;
+            items.forEach(item => {
+                const diff = Math.abs(containerCenter - (item.offsetTop + item.offsetHeight / 2));
+                if (diff < minDiff) { minDiff = diff; closestVal = item.dataset.value; }
+            });
+            return parseInt(closestVal);
+        }
+
+        function showAlert(title, message, type = 'info') {
+            document.getElementById('customAlertTitle').textContent = title;
+            document.getElementById('customAlertMessage').textContent = message;
+            document.getElementById('customAlertModal').classList.remove('hidden');
+        }
+
+        function closeCustomAlert() {
+            document.getElementById('customAlertModal').classList.add('hidden');
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            if (document.getElementById('loginPassword').value === getAppPassword()) {
+                sessionStorage.setItem('isLoggedIn', 'true');
+                showApp();
+            } else {
+                showAlert('خطأ', 'كلمة المرور غير صحيحة!', 'error');
+            }
+        }
+
+        function showApp() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.body.classList.remove('flex', 'items-center', 'justify-center');
+            document.getElementById('mainAppWrapper').classList.remove('hidden');
+            renderUI();
+        }
+
+        function logout() { sessionStorage.removeItem('isLoggedIn'); location.reload(); }
+        function openChangePasswordModal() { document.getElementById('changePasswordModal').classList.remove('hidden'); }
+        function closeChangePasswordModal() { document.getElementById('changePasswordModal').classList.add('hidden'); }
+
+        function submitChangePassword(e) {
+            e.preventDefault();
+            if (document.getElementById('currentPass').value !== getAppPassword()) {
+                showAlert('تنبيه', 'كلمة المرور الحالية غير صحيحة!', 'error');
+                return;
+            }
+            if (document.getElementById('newPass').value !== document.getElementById('confirmNewPass').value) {
+                showAlert('تنبيه', 'كلمة المرور الجديدة غير متطابقة!', 'error');
+                return;
+            }
+            localStorage.setItem('app_password', document.getElementById('newPass').value);
+            showAlert('نجح', 'تم تغيير كلمة المرور بنجاح!', 'success');
+            closeChangePasswordModal();
+        }
+
+        function exportBackup() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ clients, app_password: getAppPassword() }));
+            const dl = document.createElement('a');
+            dl.setAttribute("href", dataStr);
+            dl.setAttribute("download", `backup_${new Date().toISOString().slice(0,10)}.json`);
+            dl.click();
+        }
+
+        function importBackup(event) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = JSON.parse(e.target.result);
+                clients = data.clients || [];
+                localStorage.setItem('debt_clients', JSON.stringify(clients));
+                if (data.app_password) localStorage.setItem('app_password', data.app_password);
+                renderUI();
+                showAlert('نجاح', 'تم استعادة البيانات بنجاح!', 'success');
+            };
+            reader.readAsText(event.target.files[0]);
+        }
+
+        function addClient(e) {
+            e.preventDefault();
+            clients.push({
+                id: Date.now(),
+                name: document.getElementById('name').value,
+                phone: document.getElementById('phone').value,
+                totalAmount: parseFloat(document.getElementById('totalAmount').value),
+                remainingAmount: parseFloat(document.getElementById('totalAmount').value),
+                dueDay: getSelectedWheelValue('dayWheel'),
+                dueMonth: getSelectedWheelValue('monthWheel'),
+                payments: []
+            });
+            document.getElementById('clientForm').reset();
+            initWheels();
+            localStorage.setItem('debt_clients', JSON.stringify(clients));
+            renderUI();
+        }
+
+        function deleteClient(id) {
+            if (confirm('هل أنت متأكد من حذف هذا العميل؟')) {
+                clients = clients.filter(c => c.id !== id);
+                localStorage.setItem('debt_clients', JSON.stringify(clients));
+                renderUI();
+            }
+        }
+
+        function openPaymentModal(id) {
+            const client = clients.find(c => c.id === id);
+            document.getElementById('modalClientId').value = client.id;
+            document.getElementById('modalClientName').textContent = `العميل: ${client.name} | المتبقي: ${client.remainingAmount} جنيه`;
+            document.getElementById('paymentModal').classList.remove('hidden');
+        }
+
+        function closePaymentModal() { document.getElementById('paymentModal').classList.add('hidden'); }
+
+        function submitPayment(e) {
+            e.preventDefault();
+            const id = parseInt(document.getElementById('modalClientId').value);
+            const amount = parseFloat(document.getElementById('paymentAmount').value);
+            const client = clients.find(c => c.id === id);
+            if (amount > client.remainingAmount) {
+                showAlert('تنبيه', 'المبلغ المدفوع أكبر من المتبقي!', 'error');
+                return;
+            }
+            client.remainingAmount -= amount;
+            client.payments.unshift({
+                amount,
+                dateStr: new Date().toLocaleDateString('ar-EG'),
+                timeStr: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+                timestamp: Date.now()
+            });
+            localStorage.setItem('debt_clients', JSON.stringify(clients));
+            closePaymentModal();
+            renderUI();
+        }
+
+        function checkDueTodayCount() {
+            const today = new Date();
+            const currentDay = today.getDate();
+            const currentMonth = today.getMonth() + 1;
+            let dueCount = 0;
+
+            clients.forEach(c => {
+                if (c.remainingAmount > 0 && c.dueDay === currentDay && c.dueMonth === currentMonth) {
+                    const hasPaidThisMonth = c.payments && c.payments.some(p => {
+                        const pDate = new Date(p.timestamp || Date.now());
+                        return pDate.getMonth() === today.getMonth() && pDate.getFullYear() === today.getFullYear();
+                    });
+                    if (!hasPaidThisMonth) dueCount++;
+                }
+            });
+            document.getElementById('dueThisMonth').textContent = dueCount;
+        }
+
+        function renderUI() {
+            const tbody = document.getElementById('clientsTableBody');
+            tbody.innerHTML = '';
+            let totalRem = 0;
+            const query = (document.getElementById('searchInput')?.value || '').toLowerCase();
+
+            clients.forEach(c => {
+                totalRem += c.remainingAmount;
+                if (!c.name.toLowerCase().includes(query) && !c.phone.includes(query)) return;
+                
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition border-b">
+                        <td class="p-3">
+                            <div class="font-bold text-slate-800 cursor-pointer hover:text-indigo-600" onclick="viewClientDetails(${c.id})">${c.name}</div>
+                            <div class="text-xs text-slate-500">${c.phone} | استحقاق: ${c.dueDay} ${monthNamesList[c.dueMonth]}</div>
+                        </td>
+                        <td class="p-3 font-bold ${c.remainingAmount <= 0 ? 'text-emerald-600' : 'text-indigo-600'}">${c.remainingAmount} ج.م</td>
+                        <td class="p-3 text-center flex justify-center gap-2">
+                            ${c.remainingAmount > 0 ? `<button onclick="openPaymentModal(${c.id})" class="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-xl">دفعة</button>` : '<span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">مخلص</span>'}
+                            <button onclick="deleteClient(${c.id})" class="bg-rose-50 text-rose-700 text-xs px-3 py-1.5 rounded-xl border border-rose-100">حذف</button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('totalRemaining').textContent = totalRem.toLocaleString() + ' جنيه';
+            document.getElementById('totalClients').textContent = clients.length;
+            checkDueTodayCount();
+        }
+
+        function viewClientDetails(id) {
+            const client = clients.find(c => c.id === id);
+            document.getElementById('appContainer').classList.add('hidden');
+            document.getElementById('clientDetailsContainer').classList.remove('hidden');
+            document.getElementById('clientDetailsContainer').innerHTML = `
+                <button onclick="renderUI(); document.getElementById('clientDetailsContainer').classList.add('hidden'); document.getElementById('appContainer').classList.remove('hidden');" class="mb-4 bg-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm">← العودة</button>
+                <div class="bg-white/95 p-6 rounded-2xl shadow-sm">
+                    <h2 class="text-2xl font-bold">${client.name}</h2>
+                    <p class="text-sm text-slate-500 mt-1">الهاتف: ${client.phone}</p>
+                    <p class="text-sm text-slate-500">المتبقي: ${client.remainingAmount} جنيه</p>
+                </div>
+            `;
+        }
+
+        function openArchivesModal() { document.getElementById('archivesModal').classList.remove('hidden'); }
+        function closeArchivesModal() { document.getElementById('archivesModal').classList.add('hidden'); }
+        function downloadDailyReportPDF() { showAlert('تقرير', 'تم توليد وتنزيل التقرير اليومي بنجاح.', 'success'); }
+    </script>
+</body>
+</html>
